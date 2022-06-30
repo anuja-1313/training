@@ -1,0 +1,82 @@
+
+update employee_det
+set joining = to_timestamp_tz('2022/04/26 12:00:00 +7:30', 'YYYY/MM/DD HH:MI:SS TZH:TZM')
+where emp_id = 1;
+-- +7:30, timezone hour:timezone minute 
+
+update employee_det
+set joining = to_timestamp_tz('2022/04/26 14:00:00 +7:30', 'YYYY/MM/DD HH24:MI:SS TZH:TZM')
+where emp_id = 2;
+
+update employee_det
+set joining = to_timestamp_tz(sysdate, 'YYYY/MM/DD HH24:MI:SS TZH:TZM')
+where emp_id = 4;
+
+-------------------------------------------------------------------------------------------------
+
+create sequence seq_emp
+start with 5
+increment by 1;
+
+CREATE OR REPLACE PROCEDURE PROC_INSERT_EMPLOYEE 
+(
+  INPUT_EMP_NAME IN VARCHAR2 ,
+  INPUT_SALARY IN number
+) AS 
+BEGIN
+ 
+insert into employee_det values
+(seq_emp.nextval,INPUT_EMP_NAME,INPUT_SALARY,80,systimestamp);
+ 
+exception
+when others then 
+dbms_output.put_line('Some Error has occured');
+rollback;
+ 
+END PROC_INSERT_EMPLOYEE;
+
+--------------------------------------------------------------------------------
+set serveroutput on
+
+begin
+ 
+insert into employee_det values
+(seq_emp.nextval,'Anonymous',30000,50,systimestamp);
+ 
+PROC_INSERT_EMPLOYEE('AJ',systimestamp);
+ 
+commit;
+ 
+exception
+when others then 
+proc_error_logging(sqlerrm,sqlcode);
+--dbms_output.put_line(sqlcode);
+rollback;
+ 
+end;
+
+
+--desc employee_det;
+
+CREATE TABLE "ERROR_TABLE"("ERROR_NAME" VARCHAR2(200 BYTE));
+alter table error_table
+add err_code number;
+
+alter table error_table
+modify err_code number;
+
+
+------------------ pragma autonomous transaction -------------------------------
+create or replace PROCEDURE PROC_error_logging 
+(INPUT_ERROR_NAME IN VARCHAR2,
+input_sqlcode in number) AS 
+PRAGMA AUTONOMOUS_TRANSACTION; 
+ 
+BEGIN
+insert into error_table values(INPUT_ERROR_NAME, input_sqlcode); 
+commit;
+END PROC_error_logging;
+
+select * from error_table;
+select * from employee_det;
+desc employee_det;

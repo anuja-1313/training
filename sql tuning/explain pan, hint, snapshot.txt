@@ -1,0 +1,149 @@
+set autotrace on
+
+set autotrace statistics
+
+explain plan
+set statement_id = 'query01' for
+select customer_id, first_name, last_name 
+from customer_master
+where customer_id not in (
+select /*+ index(booking_details CUST_ID_BOOKING) */ 
+distinct customer_id from booking_details)
+order by customer_id;
+--cardinality: 9, cost: 2
+
+select customer_id, first_name, last_name 
+from customer_master
+where customer_id not in (
+select /*+ FULL(booking_details) */
+distinct customer_id from booking_details)
+order by customer_id;
+-- forcing full join increases the cost
+--cost: 5
+
+select /*+ FULL(customer_master) */
+customer_id, first_name, last_name 
+from customer_master
+where customer_id not in (
+select 
+distinct customer_id from booking_details)
+order by customer_id;
+--cost: 3
+
+select customer_id, first_name, last_name 
+from customer_master
+where customer_id not in (select distinct customer_id from booking_details)
+order by customer_id;
+
+select * from plan_table;
+
+--select /*+ FULL(customers) */ * from customers where department_id=1;
+
+--select /*+ index(customers INDEX_CUSTOMERS_DEPARTMENT_ID) */ 
+--* from customers where department_id=3;
+ 
+--select  /*+ use_nl(c,d)  */ * from customers c,departments d,customer_address ca
+--where c.department_id=d.department_id
+--and c.customer_id=ca.customer_id;
+
+--------------------------------------------------------------------------------
+explain plan
+set statement_id = 'query02' for
+select c.customer_id, c.first_name, c.last_name,
+p.phone_number, e.customer_email
+from customer_master c
+right join customer_phone_mst p on c.customer_id = p.customer_id
+right join customer_email e on c.customer_id = e.customer_id
+order by c.customer_id;
+--cardinality:15, cost:8
+
+select /*+ use_nl(c,e)  */
+c.customer_id, c.first_name, c.last_name,
+p.phone_number, e.customer_email
+from customer_master c
+right join customer_phone_mst p on c.customer_id = p.customer_id
+right join customer_email e on c.customer_id = e.customer_id
+order by c.customer_id;
+--cost: 12
+
+
+--------------------------------------------------------------------------------
+explain plan
+set statement_id = 'query03' for
+select distinct b.booking_id, b.customer_id, b.flight_number,
+f.origin, f.destination, c.city_name
+from booking_details b
+right join customer_master cm on b.customer_id = cm.customer_id
+right join flight_availability f on f.flight_number = b.flight_number
+right join city_master c on c.city_id = cm.city_id
+where b.status_indicator = 'Cancelled'
+order by b.booking_id, b.customer_id, b.flight_number;
+--cardinality:4, cost:12
+
+
+select /*+ use_nl(b,f)  */
+distinct b.booking_id, b.customer_id, b.flight_number,
+f.origin, f.destination, c.city_name
+from booking_details b
+right join customer_master cm on b.customer_id = cm.customer_id
+right join flight_availability f on f.flight_number = b.flight_number
+right join city_master c on c.city_id = cm.city_id
+where b.status_indicator = 'Cancelled'
+order by b.booking_id, b.customer_id, b.flight_number;
+
+
+select /*+ use_nl(b,c)  */
+distinct b.booking_id, b.customer_id, b.flight_number,
+f.origin, f.destination, c.city_name
+from booking_details b
+right join customer_master cm on b.customer_id = cm.customer_id
+right join flight_availability f on f.flight_number = b.flight_number
+right join city_master c on c.city_id = cm.city_id
+where b.status_indicator = 'Cancelled'
+order by b.booking_id, b.customer_id, b.flight_number;
+
+
+---autotrace all procedures
+--- autotrace select statements individually
+---identify columns for index creation
+---create indexes
+---watch cost changes for conclusion
+
+select name,value from v$parameter where name like '%pack%';
+--value: null
+
+EXEC DBMS_WORKLOAD_REPOSITORY.create_snapshot;
+
+BEGIN
+DBMS_STATS.gather_table_stats('user01', 'customer_master');
+END;
+
+BEGIN
+DBMS_STATS.gather_table_stats('user01', 'customer_master',estimate_percent => 15, cascade => TRUE);
+END;
+
+EXEC DBMS_STATS.gather_table_stats('user01', 'booking_details');
+EXEC DBMS_STATS.gather_table_stats('user01', 'airport_master');
+EXEC DBMS_STATS.gather_table_stats('user01', 'city_master');
+EXEC DBMS_STATS.gather_table_stats('user01', 'customer_email');
+EXEC DBMS_STATS.gather_table_stats('user01', 'customer_fax_mast');
+EXEC DBMS_STATS.gather_table_stats('user01', 'customer_phone_mst');
+EXEC DBMS_STATS.gather_table_stats('user01', 'flight_availability');
+EXEC DBMS_STATS.gather_table_stats('user01', 'login_master');
+EXEC DBMS_STATS.gather_table_stats('user01', 'state_master');
+
+
+analyze table customer_master compute statistics;
+
+ALTER SYSTEM SET CONTROL_MANAGEMENT_PACK_ACCESS= "DIAGNOSTIC+TUNING" ;
+select name,value from v$parameter where name like '%pack%';
+-- value:DIAGNOSTIC+TUNING
+
+--------------------------------------------------------------------------------
+------------ creating a baseline for database ----------------------------------
+begin
+dbms_workload_repository.create_snapshot;
+end;
+
+select name from v$datafile;
+
